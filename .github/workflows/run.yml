@@ -2,19 +2,28 @@ name: Nasdaq Analysis Bot
 on:
   schedule:
     - cron: '10 21 * * *' # 한국시간 오전 6시 10분 실행 (서머타임 시 5시 10분)
-  workflow_dispatch: # 수동 실행 버튼
+  workflow_dispatch: # 수동 실행 버튼 활성화
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
+    env:
+      # 2026년 기준 Node.js 24 실행 강제 설정
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      
     steps:
-      - uses: actions/checkout@v3
+      # 최신 Node.js 24를 지원하는 버전으로 업데이트 (@v4, @v5)
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: '3.11' # 안정적인 최신 파이썬 버전 사용
+          
       - name: Install Libraries
         run: pip install yfinance requests pandas
+        
       - name: Run Python Script
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
