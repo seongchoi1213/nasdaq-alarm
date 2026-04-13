@@ -14,7 +14,15 @@ def get_combined_analysis():
     nq_one_hour_ago = df_nq['Close'].iloc[-60]
     nq_change_pct = ((nq_last - nq_one_hour_ago) / nq_one_hour_ago) * 100
 
-    # 2. 비트코인 고래 분석
+    # 나스닥 코멘트 함축
+    if nq_change_pct > 0.3:
+        nq_comment = "✅ 세력의 '오버나잇' 의지 강함 (상승 지속형)"
+    elif nq_change_pct < -0.3:
+        nq_comment = "⚠️ 막판 투매 발생, 불안한 심리 반영 (하락 주의)"
+    else:
+        nq_comment = "⚖️ 방향성 결정 미루며 눈치보기 중"
+
+    # 2. 비트코인 고래 분석 (거래량 가중)
     btc = yf.Ticker("BTC-USD")
     df_btc = btc.history(period="1d", interval="5m")
     avg_btc_vol = df_btc['Volume'].mean()
@@ -22,7 +30,15 @@ def get_combined_analysis():
     btc_buy = len(whale_activity[whale_activity['Close'] > whale_activity['Open']])
     btc_sell = len(whale_activity[whale_activity['Close'] < whale_activity['Open']])
 
-    # 3. 코스피 수급 강도 추정 (외인/기관 개입 분석)
+    # 비트코인 코멘트 함축
+    if btc_buy > btc_sell:
+        btc_comment = "🐳 고래들의 저가 매수세 포착 (위험자산 선호)"
+    elif btc_buy < btc_sell:
+        btc_comment = "🚨 큰손들의 탈출 신호 감지 (리스크 오프)"
+    else:
+        btc_comment = "🔍 고래들이 조용히 숨 고르기 중"
+
+    # 3. 코스피 수급 강도 분석
     ks = yf.Ticker("^KS11")
     df_ks = ks.history(period="1d", interval="1m")
     
@@ -31,47 +47,45 @@ def get_combined_analysis():
         ks_current = df_ks['Close'].iloc[-1]
         ks_change_pct = ((ks_current - ks_start) / ks_start) * 100
         
-        # [수급 분석 로직] 거래량이 실리면서 지수가 시초가 대비 위/아래로 0.5% 이상 밀리면 외인/기관 개입으로 판단
         ks_vol_avg = df_ks['Volume'].mean()
-        current_vol = df_ks['Volume'].iloc[-10:].mean() # 최근 10분 평균 거래량
+        current_vol = df_ks['Volume'].iloc[-10:].mean()
         
-        if ks_change_pct > 0.5 and current_vol > ks_vol_avg:
-            supply_status = "🚀 외인/기관 강한 매수 유입 중"
-        elif ks_change_pct < -0.5 and current_vol > ks_vol_avg:
-            supply_status = "📉 외인/기관 물량 투하 중 (주의)"
-        elif abs(ks_change_pct) < 0.2:
-            supply_status = "⚖️ 외인/기관 관망 (개인 위주 장세)"
+        if ks_change_pct > 0.4 and current_vol > ks_vol_avg:
+            ks_comment = "🚀 외인/기관의 의도적 상방 배팅 구간"
+        elif ks_change_pct < -0.4 and current_vol > ks_vol_avg:
+            ks_comment = "📉 외인 이탈 가속화, 현금 비중 확보 권장"
         else:
-            supply_status = "🔍 수급 방향성 탐색 중"
-            
-        ks_info = f"{ks_current:,.2f} ({ks_change_pct:+.2f}%)\n - 실시간 수급: {supply_status}"
+            ks_comment = "🐌 개인 위주의 탄력 없는 장세"
+        ks_info = f"{ks_current:,.2f} ({ks_change_pct:+.2f}%)\n └ {ks_comment}"
     else:
-        ks_info = "데이터 집계 중 또는 휴장"
+        ks_info = "데이터 집계 전 또는 휴장일입니다."
 
-    # 메시지 조립
+    # 최종 메시지 조립
     msg = (
-        f"🚀 **글로벌 수급 통합 리포트**\n"
+        f"📊 **글로벌 수급 & 심리 원샷 보고서**\n"
         f"━━━━━━━━━━━━━━━\n"
         f"🇺🇸 **나스닥 마감 심리**\n"
-        f" - 마감 1시간 변동: {nq_change_pct:+.2f}%\n"
-        f" - VIX(공포지수): {vix:.2f}\n"
+        f" - 1시간 변동: {nq_change_pct:+.2f}%\n"
+        f" └ {nq_comment}\n"
+        f" - VIX(공포): {vix:.2f}\n"
         f"━━━━━━━━━━━━━━━\n"
-        f"🐳 **BTC 고래 수급**\n"
-        f" - 대량 매수: {btc_buy}회 / 매도: {btc_sell}회\n"
+        f"🐳 **BTC 고래 (Whale Alert)**\n"
+        f" - 매수: {btc_buy}회 / 매도: {btc_sell}회\n"
+        f" └ {btc_comment}\n"
         f"━━━━━━━━━━━━━━━\n"
-        f"🇰🇷 **코스피 외인/기관 추정**\n"
+        f"🇰🇷 **코스피 수급 (추정)**\n"
         f" - {ks_info}\n"
         f"━━━━━━━━━━━━━━━\n"
-        f"💡 **종합 분석:** "
+        f"💡 **종합 판단:** "
     )
     
-    # 전략 추천
-    if "매수 유입" in ks_info and nq_change_pct > 0:
-        msg += "미국장 심리와 국장 수급이 일치합니다. 비중 확대 고려."
-    elif "물량 투하" in ks_info:
-        msg += "외인 이탈이 의심됩니다. 현금 비중을 확보하세요."
+    # 전략 추천 자동 생성
+    if "✅" in nq_comment and "🐳" in btc_comment:
+        msg += "글로벌 수급 만점! 공격적 매수 타이밍입니다."
+    elif "⚠️" in nq_comment or "🚨" in btc_comment:
+        msg += "하방 압력이 큽니다. 방어적인 포지션을 유지하세요."
     else:
-        msg += "지표가 엇갈리고 있습니다. 장 후반까지 관망이 유리합니다."
+        msg += "시장 에너지가 분산되어 있습니다. 철저한 종목 장세 대응!"
 
     return msg
 
