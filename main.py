@@ -1,64 +1,57 @@
 import yfinance as yf
 import requests
 import os
+from datetime import datetime
+import pytz
 
 def get_analysis():
-    # 데이터 가져오기 (나스닥 선물 & VIX 공포지수)
-    nq = yf.Ticker("NQ=F")
-    vix = yf.Ticker("^VIX")
+    # 한국 시간 기준 현재 시간 파악
+    korea_tz = pytz.timezone('Asia/Seoul')
+    now = datetime.now(korea_tz)
     
-    df = nq.history(period="2d", interval="1m")
-    vix_data = vix.history(period="1d")['Close'].iloc[-1]
-    
-    # 1. 마감 1시간 전 분석
-    last_close = df['Close'].iloc[-1]
-    one_hour_before = df['Close'].iloc[-60]
-    reg_change_pct = ((last_close - one_hour_before) / one_hour_before) * 100
-    
-    # 2. 거래량 분석 (평균 대비 마감 직전 거래량)
-    last_hour_vol = df['Volume'].iloc[-60:].sum()
-    avg_vol = df['Volume'].mean() * 60  # 1분당 평균 거래량의 60배
-    vol_ratio = (last_hour_vol / avg_vol) * 100
+    # 오전 9시 이전이면 미국장 분석, 그 이후면 국장 분석
+    if now.hour < 9:
+        return analyze_us_market()
+    else:
+        return analyze_kr_market()
 
-    # 3. 야간 선물 실시간 데이터
+def analyze_us_market():
+    nq = yf.Ticker("NQ=F")
+    df = nq.history(period="2d", interval="1m")
+    vix = yf.Ticker("^VIX").history(period="1d")['Close'].iloc[-1]
+    
+    last_close = df['Close'].iloc[-1]
+    one_hour_ago = df['Close'].iloc[-60]
+    reg_change_pct = ((last_close - one_hour_ago) / one_hour_ago) * 100
+    
+    # 야간 선물 실시간
     current_price = nq.fast_info['last_price']
     overnight_change_pct = ((current_price - last_close) / last_close) * 100
 
-    # 심리 판단 로직
-    vol_status = "🔥 대량 거래 동반" if vol_ratio > 150 else "💨 평이한 거래량"
+    return (f"🇺🇸 **미국장 마감 심리 보고서**\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"🔍 **마감 1시간 전 대비:** {reg_change_pct:+.2f}%\n"
+            f"🌙 **실시간 야간선물:** {overnight_change_pct:+.2f}%\n"
+            f"📉 **공포지수(VIX):** {vix:.2f}\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"💡 **한줄평:** " + ("장 막판 매수세 유입, 긍정적" if reg_change_pct > 0.3 else "마감 심리 위축, 주의 요망"))
+
+def analyze_kr_market():
+    ks = yf.Ticker("^KS11")
+    df = ks.history(period="1d", interval="1m")
     
-    if reg_change_pct > 0.3:
-        reg_sentiment = "🚀 매수 우위 (의지 강함)"
-    elif reg_change_pct < -0.3:
-        reg_sentiment = "📉 매도 우위 (리스크 회피)"
-    else:
-        reg_sentiment = "⚖️ 보합 (방향성 부재)"
+    if df.empty: return "🇰🇷 국장 데이터 준비 중..."
 
-    # 메시지 구성
-    message = (
-        f"📊 **나스닥 종합 심리 분석 보고서**\n"
-        f"━━━━━━━━━━━━━━━\n"
-        f"🔍 **[정규장 마감 심리]**\n"
-        f" - 마감 1시간 변동: {reg_change_pct:+.2f}%\n"
-        f" - 시장 의지: {reg_sentiment}\n"
-        f" - 수급 강도: {vol_status} ({vol_ratio:.1f}%)\n"
-        f"━━━━━━━━━━━━━━━\n"
-        f"🌙 **[실시간 야간/공포 지표]**\n"
-        f" - 현재 선물: {current_price:,.2f} ({overnight_change_pct:+.2f}%)\n"
-        f" - VIX(공포지수): {vix_data:.2f}\n"
-        f"━━━━━━━━━━━━━━━\n"
-        f"💡 **종합 분석:** "
-    )
+    start_price = df['Open'].iloc[0]
+    current_price = df['Close'].iloc[-1]
+    change_pct = ((current_price - start_price) / start_price) * 100
 
-    # 수급 기반 종합 판단
-    if reg_change_pct > 0.3 and vol_ratio > 130:
-        message += "강한 거래량을 동반한 매수세가 확인됩니다. 기관/외인의 '진짜 매수'일 확률이 높습니다."
-    elif reg_change_pct < -0.3 and vol_ratio > 130:
-        message += "대량 거래를 동반한 투매가 나왔습니다. 하락 압력이 강하니 주의가 필요합니다."
-    else:
-        message += "거래량이 평소 수준입니다. 개인 위주의 흐름이거나 큰 변화 없는 마감입니다."
-
-    return message
+    return (f"🇰🇷 **코스피 개장 1시간 수급 진단**\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"🌅 시초가 대비: {change_pct:+.2f}%\n"
+            f"📍 현재지수: {current_price:,.2f}\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"💡 **진단:** " + ("외인/기관 주도 상승세" if change_pct > 0.5 else "방향성 탐색 중"))
 
 def send_msg(text):
     token = os.environ['TELEGRAM_TOKEN']
