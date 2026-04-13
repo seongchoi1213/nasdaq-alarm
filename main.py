@@ -6,31 +6,31 @@ import pytz
 
 def get_combined_analysis():
     try:
-        # 1. 미국 나스닥 (최근 2일치 5분봉 데이터)
+       # 1. 미국 나스닥 (오늘 하루치 변동성 정밀 추출)
         nq = yf.Ticker("NQ=F")
         df_nq = nq.history(period="2d", interval="5m")
         
-        # 데이터가 충분하지 않을 경우 (휴장 등) 안전장치
         if len(df_nq) < 15:
-            nq_report = " - 나스닥: 현재 데이터가 없거나 휴장입니다."
+            nq_report = " - 나스닥: 데이터 부족 또는 휴장"
             nq_status = "NEUTRAL"
-            nq_total_change = 0
         else:
-            # 시초가(오늘 데이터의 시작점) 찾기
-            nq_open = df_nq['Open'].iloc[0] 
-            nq_last = df_nq['Close'].iloc[-1]
+            # [수정 포인트] 마지막 데이터의 날짜(오늘)와 같은 데이터들만 필터링
+            last_date = df_nq.index[-1].date()
+            today_df = df_nq[df_nq.index.date == last_date]
+            
+            nq_open = today_df['Open'].iloc[0] # 오늘 장 시작가
+            nq_last = today_df['Close'].iloc[-1] # 현재(최종) 종가
             nq_total_change = ((nq_last - nq_open) / nq_open) * 100
             
-            # 마지막 1시간(12캔들) 변화
-            nq_last_hour = ((nq_last - df_nq['Close'].iloc[-12]) / df_nq['Close'].iloc[-12]) * 100
+            # 막판 1시간 변동성 (동일)
+            nq_last_hour = ((nq_last - today_df['Close'].iloc[-12]) / today_df['Close'].iloc[-12]) * 100
             
             nq_report = (
-                f" - 전체 변동: {nq_total_change:+.2f}%\n"
+                f" - 오늘 변동(장중): {nq_total_change:+.2f}%\n"
                 f" - 막판 1시간: {nq_last_hour:+.2f}%\n"
-                f" └ 분석: {'✅ 세력의 강한 밀어올리기' if nq_total_change > 0.5 else '⚖️ 평이한 흐름'}"
+                f" └ 분석: {'✅ 강력한 원웨이 상승' if nq_total_change > 1.0 else '⚖️ 정상 범위 내 흐름'}"
             )
             nq_status = "BULL" if nq_total_change > 0.8 else ("BEAR" if nq_total_change < -0.8 else "NEUTRAL")
-
         # 2. 비트코인 (24시간 수익률 중심)
         btc = yf.Ticker("BTC-USD")
         df_btc = btc.history(period="1d", interval="5m")
