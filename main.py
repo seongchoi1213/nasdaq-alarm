@@ -4,71 +4,63 @@ import os
 from datetime import datetime
 import pytz
 
-def get_analysis():
-    korea_tz = pytz.timezone('Asia/Seoul')
-    now = datetime.now(korea_tz)
-    
-    if now.hour < 9:
-        return analyze_us_market()
-    else:
-        return analyze_kr_market()
-
-def get_btc_whale_movements():
-    """
-    나스닥 거래 시간 내 비트코인 대량 매물대 및 고래 움직임 추정
-    (실제 온체인 API 대신 거래량 가중 평균 가격 편차를 이용한 수급 분석)
-    """
-    btc = yf.Ticker("BTC-USD")
-    # 나스닥 정규장 시간(미국 기준 09:30 ~ 16:00) 동안의 5분봉 데이터 분석
-    df_btc = btc.history(period="1d", interval="5m")
-    
-    if len(df_btc) < 10: return "데이터 집계 중"
-
-    # 거래량이 평균 대비 3배 이상 터진 지점을 '고래 활동'으로 정의
-    avg_vol = df_btc['Volume'].mean()
-    whale_activity = df_btc[df_btc['Volume'] > avg_vol * 3]
-    
-    buy_count = len(whale_activity[whale_activity['Close'] > whale_activity['Open']])
-    sell_count = len(whale_activity[whale_activity['Close'] < whale_activity['Open']])
-    
-    return f"🐳 **고래 활동(대량 거래):** 매수 {buy_count}회 / 매도 {sell_count}회"
-
-def analyze_us_market():
+def get_combined_analysis():
+    # 1. 나스닥 선물 & VIX (미국장 심리)
     nq = yf.Ticker("NQ=F")
-    df = nq.history(period="2d", interval="1m")
+    df_nq = nq.history(period="2d", interval="1m")
+    vix = yf.Ticker("^VIX").history(period="1d")['Close'].iloc[-1]
     
-    last_close = df['Close'].iloc[-1]
-    one_hour_ago = df['Close'].iloc[-60]
-    reg_change_pct = ((last_close - one_hour_ago) / one_hour_ago) * 100
-    
-    # 비트코인 수급 분석 추가
-    btc_whale = get_btc_whale_movements()
+    nq_last = df_nq['Close'].iloc[-1]
+    nq_one_hour_ago = df_nq['Close'].iloc[-60]
+    nq_change_pct = ((nq_last - nq_one_hour_ago) / nq_one_hour_ago) * 100
 
-    return (f"🇺🇸 **미국장 마감 & 코인 수급 보고**\n"
-            f"━━━━━━━━━━━━━━━\n"
-            f"🔍 **나스닥 마감 심리:** {reg_change_pct:+.2f}%\n"
-            f"{btc_whale}\n"
-            f"━━━━━━━━━━━━━━━\n"
-            f"💡 **종합 판단:** " + 
-            ("고래 매수세 동반, 위험자산 선호" if reg_change_pct > 0 and "매수" in btc_whale else "신중한 접근 필요"))
+    # 2. 비트코인 고래 분석 (최근 24시간 중 거래량 급증 구간 추출)
+    btc = yf.Ticker("BTC-USD")
+    df_btc = btc.history(period="1d", interval="5m")
+    avg_vol = df_btc['Volume'].mean()
+    whale_activity = df_btc[df_btc['Volume'] > avg_vol * 3] # 평균 거래량 3배 이상
+    btc_buy = len(whale_activity[whale_activity['Close'] > whale_activity['Open']])
+    btc_sell = len(whale_activity[whale_activity['Close'] < whale_activity['Open']])
 
-def analyze_kr_market():
-    # (기존 코스피 분석 로직과 동일)
+    # 3. 코스피 분석 (전일 종가 및 시초가 대비 변동)
     ks = yf.Ticker("^KS11")
-    df = ks.history(period="1d", interval="1m")
-    if df.empty: return "🇰🇷 국장 데이터 휴장"
-    change_pct = ((df['Close'].iloc[-1] - df['Open'].iloc[0]) / df['Open'].iloc[0]) * 100
-    
-    return (f"🇰🇷 **코스피 수급 진단**\n"
-            f"━━━━━━━━━━━━━━━\n"
-            f"📍 시초가 대비: {change_pct:+.2f}%\n"
-            f"💡 판단: " + ("외인 주도 상승" if change_pct > 0.5 else "관망세"))
+    df_ks = ks.history(period="2d")
+    ks_last = df_ks['Close'].iloc[-1]
+    ks_prev = df_ks['Close'].iloc[-2]
+    ks_change_pct = ((ks_last - ks_prev) / ks_prev) * 100
+
+    # 메시지 구성
+    msg = (
+        f"🚀 **오늘의 시장 통합 보고서**\n"
+        f"━━━━━━━━━━━━━━━\n"
+        f"🇺🇸 **나스닥 마감 심리**\n"
+        f" - 마감 1시간 변동: {nq_change_pct:+.2f}%\n"
+        f" - 공포지수(VIX): {vix:.2f}\n"
+        f"━━━━━━━━━━━━━━━\n"
+        f"🐳 **비트코인 고래 움직임**\n"
+        f" - 대량 매수: {btc_buy}회 / 매도: {btc_sell}회\n"
+        f" - 판단: {'매수 우위' if btc_buy > btc_sell else '매도 우위'}\n"
+        f"━━━━━━━━━━━━━━━\n"
+        f"🇰🇷 **코스피 전일 현황**\n"
+        f" - 종가: {ks_last:,.2f} ({ks_change_pct:+.2f}%)\n"
+        f"━━━━━━━━━━━━━━━\n"
+        f"💡 **종합 판단:** "
+    )
+
+    if nq_change_pct > 0.3 and btc_buy > btc_sell:
+        msg += "미국장 마감 심리와 코인 수급이 모두 좋습니다. 불장이 예상됩니다!"
+    elif nq_change_pct < -0.3:
+        msg += "미국장 마감 심리가 불안합니다. 국장 개장 후 보수적 대응이 필요합니다."
+    else:
+        msg += "혼조세입니다. 장 초반 외국인 수급을 확인하며 대응하세요."
+
+    return msg
 
 def send_msg(text):
-    token = os.environ['TELEGRAM_TOKEN']
-    chat_id = os.environ['TELEGRAM_CHAT_ID']
+    token = os.environ.get('TELEGRAM_TOKEN')
+    chat_id = os.environ.get('TELEGRAM_CHAT_ID')
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     requests.post(url, json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"})
 
 if __name__ == "__main__":
-    send_msg(get_analysis())
+    send_msg(get_combined_analysis())
