@@ -1,32 +1,25 @@
-name: Nasdaq Analysis Bot
+name: Nasdaq & Kospi Bot
 on:
   schedule:
-    - cron: '10 21 * * *' # 한국시간 오전 6시 10분 실행
-  workflow_dispatch: # 수동 실행 버튼
+    # 1. 한국 시간 06:10 (UTC 21:10) - 미국장 분석용
+    - cron: '10 21 * * *'
+    # 2. 한국 시간 10:35 (UTC 01:35) - 국장 분석용
+    - cron: '35 1 * * *'
+  workflow_dispatch:
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-    # 강제 실행 변수를 제거하여 GitHub의 기본 권장 설정을 따릅니다.
-    
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          # 내부 노드 버전 충돌 방지를 위한 설정
-          persist-credentials: false
-        
+      - uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          
       - name: Install Libraries
-        run: |
-          python -m pip install --upgrade pip
-          pip install yfinance requests pandas
-        
-      - name: Run Python Script
+        # pytz 라이브러리가 추가되었으니 꼭 설치 목록에 넣어야 합니다.
+        run: pip install yfinance requests pandas pytz
+      - name: Run Script
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
