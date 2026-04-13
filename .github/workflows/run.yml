@@ -1,0 +1,22 @@
+name: Nasdaq Analysis Bot
+on:
+  schedule:
+    - cron: '10 21 * * *' # 한국시간 오전 6시 10분 실행 (서머타임 시 5시 10분)
+  workflow_dispatch: # 수동 실행 버튼
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      - name: Install Libraries
+        run: pip install yfinance requests pandas
+      - name: Run Python Script
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python main.py
