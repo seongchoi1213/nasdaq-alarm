@@ -18,12 +18,11 @@ def get_ai_analysis(market_data, is_pre_market):
     api_key = os.environ.get('GEMINI_API_KEY')
     if not api_key: return "API 키 설정 확인 필요"
     
-    # [최종 수정] 가장 안정적인 호출 경로와 파라미터 구조
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    # [변경점] 호환성이 가장 높은 gemini-pro 모델과 v1beta 경로 사용
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={api_key}"
     
     prompt = f"전문 투자 분석가로서 다음 주식 데이터를 1~2문장으로 냉철하게 요약하세요(환율/비트코인 언급 금지): {market_data}"
 
-    # API 표준 규격에 맞춘 페이로드
     payload = {
         "contents": [{
             "parts": [{"text": prompt}]
@@ -34,13 +33,13 @@ def get_ai_analysis(market_data, is_pre_market):
         response = requests.post(url, json=payload, timeout=15)
         res_json = response.json()
         
-        # 응답 데이터에서 텍스트만 안전하게 추출
+        # 정상 응답 추출
         if 'candidates' in res_json and len(res_json['candidates']) > 0:
             return res_json['candidates'][0]['content']['parts'][0]['text'].strip()
         else:
-            # 에러 발생 시 원인 파악을 위한 구체적 메시지
-            err_msg = res_json.get('error', {}).get('message', '모델 인식 오류')
-            return f"수급 분석 일시 지연 (사유: {err_msg})"
+            # 실패 시 에러 사유를 상세히 찍어 분석
+            err_msg = res_json.get('error', {}).get('message', '모델 응답 구조 오류')
+            return f"AI 분석 지연 (사유: {err_msg})"
     except Exception as e:
         return f"연결 오류 ({str(e)})"
 
