@@ -6,99 +6,93 @@ import pytz
 
 def get_combined_analysis():
     try:
-        # 시간대 설정
         seoul_tz = pytz.timezone('Asia/Seoul')
         now_seoul = datetime.now(seoul_tz)
         
-        # 1. 나스닥 (당일 개장 대비 수익률 정밀 추출)
+        # 1. 나스닥 (당일 장중 변동성 & 시장 심리)
         nq = yf.Ticker("NQ=F")
         df_nq = nq.history(period="2d", interval="5m")
+        vix = yf.Ticker("^VIX").history(period="1d")['Close'].iloc[-1] # 공포지수
         
         if len(df_nq) < 15:
-            nq_report, nq_status = " - 나스닥: 데이터 부족 또는 휴장", "NEUTRAL"
+            nq_report, nq_status = " - 나스닥: 데이터 수신 지연 또는 휴장", "NEUTRAL"
         else:
             last_date = df_nq.index[-1].date()
-            today_df = df_nq[df_nq.index.date == last_date]
+            today_nq = df_nq[df_nq.index.date == last_date]
+            nq_open = today_nq['Open'].iloc[0]
+            nq_last = today_nq['Close'].iloc[-1]
+            nq_change = ((nq_last - nq_open) / nq_open) * 100
             
-            nq_open = today_df['Open'].iloc[0] 
-            nq_last = today_df['Close'].iloc[-1]
-            nq_total_change = ((nq_last - nq_open) / nq_open) * 100
-            nq_last_hour = ((nq_last - today_df['Close'].iloc[-12]) / today_df['Close'].iloc[-12]) * 100
-            
-            nq_report = (
-                f" - 오늘 장중 변동: {nq_total_change:+.2f}%\n"
-                f" - 막판 1시간: {nq_last_hour:+.2f}%\n"
-                f" └ 분석: {'✅ 강력한 상방 의지' if nq_total_change > 0.8 else '⚖️ 평이한 흐름'}"
-            )
-            nq_status = "BULL" if nq_total_change > 0.8 else ("BEAR" if nq_total_change < -0.8 else "NEUTRAL")
+            # 폴리마켓을 대체하는 스마트머니 심리 지표
+            sentiment = "🔥 강세 우위" if vix < 20 and nq_change > 0.5 else "⚠️ 관망/공포"
+            nq_report = f" - 장중 변동: {nq_change:+.2f}%\n - 시장 심리(VIX): {vix:.2f} ({sentiment})"
+            nq_status = "BULL" if nq_change > 0.7 else ("BEAR" if nq_change < -0.7 else "NEUTRAL")
 
-        # 2. 비트코인 (24시간 가격 변동)
+        # 2. 원/달러 환율 (외인 수급의 핵심)
+        usdkrw = yf.Ticker("USDKRW=X")
+        df_fx = usdkrw.history(period="2d")
+        fx_now = df_fx['Close'].iloc[-1]
+        fx_prev = df_fx['Close'].iloc[-2]
+        fx_diff = fx_now - fx_prev
+        fx_report = f" - 현재 환율: {fx_now:,.2f}원 ({fx_diff:+.2f}원)"
+
+        # 3. 비트코인 (디지털 금 & 위험자산 선행)
         btc = yf.Ticker("BTC-USD")
         df_btc = btc.history(period="1d", interval="5m")
-        
         if not df_btc.empty:
-            btc_start = df_btc['Open'].iloc[0]
-            btc_now = df_btc['Close'].iloc[-1]
-            btc_total_change = ((btc_now - btc_start) / btc_start) * 100
-            btc_report = f" - 현재 수익률: {btc_total_change:+.2f}%\n └ 분석: {'🔥 강력한 추세 상승' if btc_total_change > 3 else '🔍 수급 탐색 중'}"
+            btc_change = ((df_btc['Close'].iloc[-1] - df_btc['Open'].iloc[0]) / df_btc['Open'].iloc[0]) * 100
+            btc_report = f" - 현재 수익률: {btc_change:+.2f}%\n └ 고래 동향: {'🐳 매집 중' if btc_change > 2 else '🔍 탐색 중'}"
         else:
-            btc_report = " - 비트코인: 데이터 수신 실패"
+            btc_report = " - 비트코인: 데이터 수신 불가"
 
-        # 3. 코스피 (09:00 ~ 11:00 수급 집중 분석)
+        # 4. 코스피 (09:00~11:00 수급 정밀 분석)
         ks = yf.Ticker("^KS11")
         df_ks = ks.history(period="1d", interval="5m")
-        
         if not df_ks.empty:
-            # 11:00 이전 데이터만 필터링 (안정성을 위해 11:05까지 포함)
             df_ks.index = df_ks.index.tz_convert('Asia/Seoul')
             morning_df = df_ks[df_ks.index.time <= time(11, 5)]
-            
             if not morning_df.empty:
                 ks_open = morning_df['Open'].iloc[0]
                 ks_1100 = morning_df['Close'].iloc[-1]
                 ks_change = ((ks_1100 - ks_open) / ks_open) * 100
                 
-                # 수급 강도 (평균 거래량 대비 11시 직전 거래량)
-                avg_vol = morning_df['Volume'].mean()
-                final_vol = morning_df['Volume'].iloc[-3:].mean()
-                
-                if ks_change > 0.4 and final_vol > avg_vol:
-                    ks_flow = "🚀 외인/기관 동반 매수 (오전 우위)"
-                elif ks_change < -0.4 and final_vol > avg_vol:
-                    ks_flow = "📉 외인/기관 동반 매도 (하락 주도)"
+                # 수급 판정 (환율과 지수 변동 결합)
+                if ks_change > 0.3 and fx_diff < 0:
+                    ks_flow = "🚀 외인/기관 공격적 순매수"
+                elif ks_change < -0.3 and fx_diff > 0:
+                    ks_flow = "📉 외인/기관 동반 이탈"
                 else:
-                    ks_flow = "⚖️ 수급 혼조/개인 위주 장세"
-
-                ks_report = (
-                    f" - [09:00~11:00] 변동: {ks_change:+.2f}%\n"
-                    f" - 11시 수급 판정: {ks_flow}\n"
-                    f" └ 분석: {'✅ 오전 수급 상방 고착' if ks_change > 0.3 else '🔍 오후장 변동 대기'}"
-                )
+                    ks_flow = "⚖️ 개인 위주 수급 혼조"
+                
+                ks_report = f" - [09~11시] 변동: {ks_change:+.2f}%\n - 수급 판정: {ks_flow}"
             else:
-                ks_report = " - 코스피: 11시 데이터 집계 중입니다."
+                ks_report = " - 코스피: 오전 데이터 집계 중"
         else:
-            ks_report = " - 코스피: 휴장 또는 데이터 없음."
+            ks_report = " - 코스피: 휴장 또는 데이터 없음"
 
-        # 4. 종합 판단
-        summary = "🚀 [매수 우위] 글로벌 상방 동조화" if nq_status == "BULL" else \
-                  ("🚨 [보수적 대응] 미국발 하락 압력 주의" if nq_status == "BEAR" else "🧐 [관망] 수급 종목별 차별화 장세")
+        # 5. 최종 종합 판단 (나스닥 + 환율 + 코스피 수급)
+        if nq_status == "BULL" and fx_diff < 0:
+            summary = "🔥 [강력 매수] 모든 지표 상방. 적극적 수익 극대화."
+        elif nq_status == "BEAR" or fx_diff > 5:
+            summary = "🚨 [현금 확보] 환율 급등 및 미 증시 불안. 방어적 태세."
+        else:
+            summary = "🧐 [선별 대응] 지수 정체기. 수급이 쏠리는 개별주 집중."
 
-        # 메시지 조립
-        msg = (
-            f"📊 **{now_seoul.strftime('%m/%d')} 실전 수급 리포트**\n"
+        return (
+            f"📊 **{now_seoul.strftime('%m/%d')} 실전 통합 리포트**\n"
             f"━━━━━━━━━━━━━━━\n"
-            f"🇺🇸 **나스닥 (당일 수익률)**\n{nq_report}\n"
+            f"💵 **원/달러 환율 (FX)**\n{fx_report}\n"
             f"━━━━━━━━━━━━━━━\n"
-            f"🐳 **BTC (실시간 변동)**\n{btc_report}\n"
+            f"🇺🇸 **나스닥 (Market Sentiment)**\n{nq_report}\n"
             f"━━━━━━━━━━━━━━━\n"
-            f"🇰🇷 **코스피 (09~11시 수급)**\n{ks_report}\n"
+            f"🐳 **BTC (Crypto High-Low)**\n{btc_report}\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"🇰🇷 **코스피 (09-11시 수급)**\n{ks_report}\n"
             f"━━━━━━━━━━━━━━━\n"
             f"💡 **종합 판단:**\n {summary}"
         )
-        return msg
-
     except Exception as e:
-        return f"❌ 분석 중 오류 발생: {str(e)}"
+        return f"❌ 시스템 오류 발생: {str(e)}"
 
 def send_msg(text):
     token = os.environ.get('TELEGRAM_TOKEN')
