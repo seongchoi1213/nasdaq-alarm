@@ -2,9 +2,11 @@ name: Market Report Bot
 
 on:
   schedule:
-    - cron: '30 21 * * *'  # 한국 오전 06:30
-    - cron: '20 2 * * *'   # 한국 오전 11:20
-  workflow_dispatch:       # 수동 실행 버튼
+    # 1차: 한국 오전 07:00 (UTC 22:00)
+    - cron: '0 22 * * *'
+    # 2차: 한국 오전 11:20 (UTC 02:20)
+    - cron: '20 2 * * *'
+  workflow_dispatch: # 수동 실행 버튼
 
 jobs:
   build:
