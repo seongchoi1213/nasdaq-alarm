@@ -2,8 +2,8 @@ name: Market Analysis Bot
 
 on:
   schedule:
-    - cron: '10 21 * * *'  # 한국시간 06:10 (나스닥 마감)
-    - cron: '30 2 * * *'   # 한국시간 11:30 (코스피 오전 수급)
+    - cron: '10 21 * * *'  # 한국시간 06:10 (나스닥 마감 보고)
+    - cron: '20 2 * * *'   # 한국시간 11:20 (코스피 11시 수급 확정 및 보고 시작)
   workflow_dispatch:      # 수동 실행 버튼
 
 jobs:
