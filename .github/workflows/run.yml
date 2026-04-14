@@ -2,15 +2,17 @@ name: Market Analysis Bot
 
 on:
   schedule:
-    # 1. 새벽 06:10 (나스닥 마감 및 비트코인 리포트)
-    - cron: '10 21 * * *'
-    # 2. 오전 11:30 (코스피 오전 수급 확정 리포트) - 수정된 부분
-    - cron: '30 2 * * *' 
-  workflow_dispatch: # 수동 실행 버튼 활성화 (중요!)
+    - cron: '10 21 * * *'  # 한국시간 06:10 (나스닥 마감)
+    - cron: '30 2 * * *'   # 한국시간 11:30 (코스피 오전 수급)
+  workflow_dispatch:      # 수동 실행 버튼
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
+    # Node.js 24 강제 사용 설정으로 경고 제거
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
