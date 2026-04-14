@@ -1,27 +1,32 @@
 name: Market Analysis Bot
+
 on:
   schedule:
-    - cron: '10 21 * * *' # 한국시간 06:10
-    - cron: '35 1 * * *'  # 한국시간 10:35
-  workflow_dispatch:
+    # 1. 새벽 06:10 (나스닥 마감 및 비트코인 리포트)
+    - cron: '10 21 * * *'
+    # 2. 오전 11:30 (코스피 오전 수급 확정 리포트) - 수정된 부분
+    - cron: '30 2 * * *' 
+  workflow_dispatch: # 수동 실행 버튼 활성화 (중요!)
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-      - name: Install Libs
+          python-version: '3.10'
+          
+      - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install yfinance requests pandas pytz
-      - name: Run
+          pip install yfinance requests pytz pandas
+          
+      - name: Run script
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python main.py
+        
