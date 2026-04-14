@@ -3,7 +3,6 @@ import requests
 import os
 from datetime import datetime
 import pytz
-import json
 
 def send_msg(text):
     token = os.environ.get('TELEGRAM_TOKEN')
@@ -17,13 +16,13 @@ def send_msg(text):
 
 def get_ai_analysis(market_data, is_pre_market):
     api_key = os.environ.get('GEMINI_API_KEY')
-    if not api_key: return "API 키가 설정되지 않았습니다."
+    if not api_key: return "API 키 설정 확인 필요"
     
-    # 가장 안정적인 v1beta 경로 사용
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    # 모델 경로를 가장 호환성 높은 'gemini-1.5-flash-latest'로 변경
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={api_key}"
     
     context = "코스피 개장 전 전일 종가 분석" if is_pre_market else "코스피 장중 수급 에너지 분석"
-    prompt = f"당신은 전문 투자 분석가입니다. 환율/비트코인 언급 없이 다음 주식 데이터를 1~2문장으로 냉철하게 요약하세요: {market_data}"
+    prompt = f"당신은 전문 투자 분석가입니다. 환율/비트코인 언급 없이 다음 주식 데이터를 1~2문장으로 요약하세요: {market_data}"
 
     payload = {
         "contents": [{"parts": [{"text": prompt}]}]
@@ -33,15 +32,15 @@ def get_ai_analysis(market_data, is_pre_market):
         response = requests.post(url, json=payload, timeout=15)
         res_json = response.json()
         
-        # 정상 응답 추출
+        # 정상 응답 추출 로직
         if 'candidates' in res_json and len(res_json['candidates']) > 0:
             return res_json['candidates'][0]['content']['parts'][0]['text'].strip()
         else:
-            # 에러가 나면 어떤 에러인지 텍스트로 반환 (디버깅용)
-            err_msg = res_json.get('error', {}).get('message', '알 수 없는 응답 구조')
-            return f"AI 분석 일시 지연 (사유: {err_msg})"
+            # 에러 발생 시 상세 메시지 반환
+            err_msg = res_json.get('error', {}).get('message', '응답 구조 오류')
+            return f"AI 분석 지연 (사유: {err_msg})"
     except Exception as e:
-        return f"네트워크 오류로 분석 불가 ({str(e)})"
+        return f"연결 오류 ({str(e)})"
 
 def run():
     seoul_tz = pytz.timezone('Asia/Seoul')
