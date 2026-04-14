@@ -2,10 +2,9 @@ name: Market Report Bot
 
 on:
   schedule:
-    # ⬇️ schedule 바로 아래에 이 줄들이 위치해야 합니다 (공백 2~4칸)
-    - cron: '10 22 * * *'  # 1차: 한국 오전 07:10 (UTC 22:10)
-    - cron: '20 2 * * *'   # 2차: 한국 오전 11:20 (UTC 02:20)
-  workflow_dispatch:       # 수동 실행 버튼
+    - cron: '0 23 * * *'  # 한국 오전 08:00 (UTC 23:00)
+    - cron: '30 2 * * *'  # 한국 오전 11:30 (UTC 02:30)
+  workflow_dispatch:      # 테스트용 수동 실행 버튼
 
 jobs:
   build:
@@ -13,19 +12,14 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
-
       - name: Install dependencies
-        run: |
-          pip install yfinance requests pytz
-
+        run: pip install yfinance requests pytz
       - name: Run script
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python main.py
