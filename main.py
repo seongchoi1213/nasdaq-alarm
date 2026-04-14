@@ -23,27 +23,49 @@ def run():
     divider = "━━━━━━━━━━━━━━━━━━\n"
 
     if is_morning:
+        # --- [08:00] 아침 통합 리포트 ---
         try:
+            # 데이터 수집
+            ks = yf.Ticker("^KS11").history(period="2d")
+            ks_curr, ks_diff = ks['Close'].iloc[-1], ks['Close'].iloc[-1] - ks['Close'].iloc[-2]
+            
             nq = yf.Ticker("NQ=F").history(period="1d")
             nq_curr, nq_diff = nq['Close'].iloc[-1], nq['Close'].iloc[-1] - nq['Open'].iloc[0]
+            
             btc = yf.Ticker("BTC-USD").history(period="1d")['Close'].iloc[-1]
             fx = yf.Ticker("USDKRW=X").history(period="1d")['Close'].iloc[-1]
 
+            # 1. 헤더 및 코스피
             header = f"🚀 <b>아침 시장 리포트 ({now_str})</b>\n"
-            nq_ui = f"<b>🇺🇸 NASDAQ 100 (선물)</b>\n┗ <b>{nq_curr:,.2f}</b> ({nq_diff:+.2f})\n┗ <b>상태:</b> {'⬆️ 상방' if nq_diff > 0 else '⬇️ 하방'}\n\n"
-            etc_ui = f"<b>💰 BTC & FX</b>\n┗ <b>BTC:</b> ${btc:,.0f}\n┗ <b>환율:</b> {fx:,.2f}원\n\n"
-            msg = f"{header}{divider}{nq_ui}{etc_ui}{divider}<i>* 미장 마감 데이터가 반영되었습니다.</i>"
+            ks_ui = f"🇰🇷 <b>KOSPI MARKET (전일마감)</b>\n┗ <b>{ks_curr:,.2f}</b> ({ks_diff:+.2f})\n┗ <b>상태:</b> {'🔴 매도 우위' if ks_diff < 0 else '🟢 매수 우위'}\n\n"
+            
+            # 2. 나스닥
+            nq_ui = f"🇺🇸 <b>NASDAQ 100 (선물)</b>\n┗ <b>{nq_curr:,.2f}</b> ({nq_diff:+.2f})\n┗ <b>라스트아워:</b> {'⬆️ 상방' if nq_diff > 0 else '⬇️ 하방'}\n\n"
+            
+            # 3. 비트코인 & 환율
+            etc_ui = f"💰 <b>BTC & FX</b>\n┗ <b>BTC:</b> ${btc:,.0f}\n┗ <b>환율:</b> {fx:,.2f}원\n\n"
+            
+            # 4. 하단 요약 (가독성 포인트)
+            summary = f"<b>☀️ 아침 시장 요약</b>\n┗ 나스닥 선물: {nq_curr:,.2f} ({nq_diff:+.2f})\n┗ 비트코인: ${btc:,.0f}\n┗ 환율: {fx:,.2f}원\n"
+
+            msg = f"{header}{divider}{ks_ui}{nq_ui}{etc_ui}{divider}{summary}{divider}<i>* 미장 마감 데이터가 반영되었습니다.</i>"
         except: msg = "아침 데이터 수집 지연"
+        
     else:
+        # --- [11:30] 오전 수급 통합 브리핑 ---
         try:
             ks_h = yf.Ticker("^KS11").history(period="1d", interval="15m")
             curr, op = ks_h['Close'].iloc[-1], ks_h['Open'].iloc[0]
             diff = curr - op
+            diff_pct = (diff / op) * 100
             
             header = f"🚀 <b>오전 수급 브리핑 ({now_str})</b>\n"
-            ks_ui = f"<b>🇰🇷 KOSPI MARKET (장중)</b>\n┗ <b>{curr:,.2f}</b> ({diff:+.2f})\n┗ <b>수급:</b> {'🟢 매수 우위' if diff > 0 else '🔴 매도 우위'}\n\n"
-            msg = f"{header}{divider}{ks_ui}{divider}<i>* 개장 이후 11:30까지의 에너지입니다.</i>"
-        except: msg = "오후 수급 데이터 수집 지연"
+            ks_ui = f"🇰🇷 <b>KOSPI MARKET (장중)</b>\n┗ <b>{curr:,.2f}</b> ({diff:+.2f})\n┗ <b>변동폭:</b> {diff_pct:+.2f}%\n┗ <b>수급 에너지:</b> {'🟢 매수 우위' if diff > 0 else '🔴 매도 우위'}\n\n"
+            
+            summary = f"<b>📊 수급 요약</b>\n┗ 현재가: {curr:,.2f}\n┗ 시초가 대비: {diff:+.2f}\n"
+
+            msg = f"{header}{divider}{ks_ui}{divider}{summary}{divider}<i>* 개장 이후 11:30까지의 흐름입니다.</i>"
+        except: msg = "오전 수급 데이터 수집 지연"
 
     send_msg(msg)
 
