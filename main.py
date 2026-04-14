@@ -15,22 +15,25 @@ def send_msg(text):
     except: pass
 
 def run():
-    # 1. 시간 및 분석 기준 설정
+    # 1. 한국 시간대 설정
     seoul_tz = pytz.timezone('Asia/Seoul')
     now_dt = datetime.now(seoul_tz)
     now_str = now_dt.strftime('%Y-%m-%d %H:%M')
     
-    is_pre_market = now_dt.hour < 9  # 9시 이전이면 개장 전 리포트 모드
+    # 오전 9시 전후로 리포트 성격 분기
+    is_pre_market = now_dt.hour < 9
 
-    # 2. KOSPI 데이터 (전일 종가 vs 당일 오전 수급 분기)
+    # 2. KOSPI 데이터 수집
     try:
         ks_h = yf.Ticker("^KS11").history(period="5d", interval="15m")
         if not ks_h.empty:
             curr = ks_h['Close'].iloc[-1]
             if is_pre_market:
+                # 개장 전: 전일 종가와 비교
                 diff = curr - ks_h['Close'].iloc[-2]
                 label = "전일마감"
             else:
+                # 장중: 오늘 시초가와 비교
                 diff = curr - ks_h['Open'].iloc[0]
                 label = "오전수급"
             
@@ -39,7 +42,7 @@ def run():
             ks_ui += f"┗ <b>상태:</b> {'🟢 매수 우위' if diff > 0 else '🔴 매도 우위'}\n\n"
     except: ks_ui = "🇰🇷 KOSPI: 데이터 지연\n\n"
 
-    # 3. NASDAQ 100 데이터
+    # 3. NASDAQ 100 데이터 수집
     try:
         nq_h = yf.Ticker("NQ=F").history(period="1d", interval="1h")
         if not nq_h.empty:
@@ -50,7 +53,7 @@ def run():
             nq_ui += f"┗ <b>라스트아워:</b> {'⬆️ 상방' if nq_lh > 0 else '⬇️ 하방'}\n\n"
     except: nq_ui = "🇺🇸 NASDAQ: 데이터 지연\n\n"
 
-    # 4. BTC & 환율 데이터
+    # 4. BTC & 환율 데이터 수집
     try:
         fx_h = yf.Ticker("USDKRW=X").history(period="2d")
         fx_curr = fx_h['Close'].iloc[-1]
@@ -66,8 +69,9 @@ def run():
     title = "아침 시장 리포트" if is_pre_market else "오전 수급 브리핑"
     header = f"🚀 <b>{title} ({now_str})</b>\n"
     divider = "━━━━━━━━━━━━━━━━━━\n"
+    footer = "<i>* 모든 수치는 Yahoo Finance 실시간 기준입니다.</i>"
     
-    final_report = f"{header}{divider}{ks_ui}{nq_ui}{etc_ui}{divider}<i>* 모든 데이터는 Yahoo Finance 실시간 기준입니다.</i>"
+    final_report = f"{header}{divider}{ks_ui}{nq_ui}{etc_ui}{divider}{footer}"
     
     send_msg(final_report)
 
