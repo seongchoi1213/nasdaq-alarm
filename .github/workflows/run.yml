@@ -2,9 +2,13 @@ name: Market Analysis Bot with AI
 
 on:
   schedule:
-    - cron: '10 21 * * *'  # 한국시간 06:10
-    - cron: '20 2 * * *'   # 한국시간 11:20
-  workflow_dispatch:
+    - cron: '10 21 * * *'  # 한국시간 오전 06:10 (UTC 21:10)
+    - cron: '20 2 * * *'   # 한국시간 오전 11:20 (UTC 02:20)
+  workflow_dispatch:      # 수동 실행 버튼 활성화
+
+# 2026년 기준 Node.js 24 환경 강제 설정 (Warning 제거)
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   run-bot:
@@ -20,12 +24,14 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install yfinance requests pytz pandas google-generativeai
+          python -m pip install --upgrade pip
+          # AI 엔진 404 에러 방지를 위해 최신 버전 라이브러리 강제 설치
+          pip install --upgrade google-generativeai yfinance requests pytz pandas
 
       - name: Run script
         env:
+          # GitHub Secrets에 등록된 변수들을 불러옵니다.
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python main.py
-        
