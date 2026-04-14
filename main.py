@@ -3,9 +3,8 @@ import requests
 import os
 from datetime import datetime
 import pytz
-from google import genai
-from google.genai import types
 
+# 1. 텔레그램 전송 함수
 def send_msg(text):
     token = os.environ.get('TELEGRAM_TOKEN')
     chat_id = os.environ.get('TELEGRAM_CHAT_ID')
@@ -18,31 +17,34 @@ def send_msg(text):
     except Exception as e:
         print(f"전송 오류: {e}")
 
+# 2. AI 분석 함수 (REST API 직접 호출 방식)
 def get_ai_analysis(market_data):
     api_key = os.environ.get('GEMINI_API_KEY')
     if not api_key: return "API 키 없음"
     
+    # 구글 서버 정식 주소 (v1 정식 버전 타격)
+    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={api_key}"
+    
+    headers = {'Content-Type': 'application/json'}
+    payload = {
+        "contents": [{
+            "parts": [{"text": f"투자 분석가로서 다음 지표를 바탕으로 오늘 전략을 짧게 분석해줘. 기호 없이 텍스트로만 3문장 이내: {market_data}"}]
+        }]
+    }
+    
     try:
-        # 1. 클라이언트 생성
-        client = genai.Client(api_key=api_key)
+        response = requests.post(url, headers=headers, json=payload)
+        result = response.json()
         
-        # 2. 분석 요청 (api_version을 v1으로 강제 지정)
-        # 이 부분이 v1beta로 접속해서 생기는 404 에러를 해결하는 핵심입니다.
-        response = client.models.generate_content(
-            model="gemini-1.5-flash",
-            contents=f"투자 분석가로서 다음 지표를 바탕으로 오늘 전략을 짧게 분석해줘. 기호 없이 텍스트로만: {market_data}",
-            config=types.GenerateContentConfig(
-                api_version="v1"
-            )
-        )
-        
-        if response and response.text:
-            return response.text
-        return "분석 내용 생성 실패"
-        
+        # 결과에서 텍스트만 추출
+        if 'candidates' in result:
+            return result['candidates'][0]['content']['parts'][0]['text']
+        else:
+            return f"분석 실패: {result.get('error', {}).get('message', '알 수 없는 오류')}"
     except Exception as e:
-        return f"AI 분석 최종 실패: {str(e)}"
+        return f"통신 실패: {str(e)}"
 
+# 3. 메인 실행 로직
 def run():
     seoul_tz = pytz.timezone('Asia/Seoul')
     now = datetime.now(seoul_tz).strftime('%Y-%m-%d %H:%M')
@@ -50,6 +52,7 @@ def run():
     report = f"📊 [마켓 리포트 {now}]\n\n"
     summary = ""
     
+    # 데이터 수집
     try:
         fx = yf.Ticker("USDKRW=X").history(period="1d")['Close'].iloc[-1]
         report += f"💵 환율: {fx:,.2f}원\n"
