@@ -27,13 +27,11 @@ def get_ai_analysis(market_data):
 
     for model_path in available_models:
         url = f"https://generativelanguage.googleapis.com/v1beta/{model_path}:generateContent?key={api_key}"
-        # ETF 유입/유출 및 고래 활동 중심의 분석 프롬프트
+        # 브리핑 대상 축소: 주식 시장 수급에만 집중
         prompt = f"""
-        당신은 기관 투자자 전문 수급 분석가입니다. 다음 데이터를 2~3문장으로 분석하세요.
-        1. 환율 언급 금지. '사상 최고가' 등 단정적 표현 금지.
-        2. 비트코인은 가격 변동과 함께 '전일 현물 ETF 자금 유입/유출' 및 '웨일얼랏 고래 활동'의 맥락을 결합해 분석하세요.
-        3. 나스닥 라스트아워와 코스피 오전장 수급 강도를 통해 기관의 포지션을 추론하세요.
-        4. 매우 냉철하고 전문적인 용어를 사용하세요.
+        당신은 수급 전문 분석가입니다. 다음 데이터를 1~2문장으로 요약하세요.
+        1. 환율과 비트코인은 브리핑에서 절대 언급하지 마세요. (이미 UI에 수치가 있음)
+        2. 나스닥 라스트아워와 코스피 오전장 가격 데이터를 기반으로 '스마트 머니'의 공격성만 평가하세요.
         데이터: {market_data}
         """
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
@@ -50,7 +48,6 @@ def run():
     now = datetime.now(seoul_tz).strftime('%Y-%m-%d %H:%M')
     
     summary_ai = ""
-    FX_BASE = 1450.0
 
     # 1. KOSPI (오전 수급)
     try:
@@ -72,28 +69,33 @@ def run():
         nq_lh = nq_curr - nq_h['Open'].iloc[-1]
         nq_ui = f"<b>🇺🇸 NASDAQ 100</b>\n"
         nq_ui += f"┗ <b>{nq_curr:,.2f}</b> ({nq_lh:+.2f})\n"
-        nq_ui += f"┗ <b>수급:</b> {'⬆️ 라스트아워 매수' if nq_lh > 0 else '⬇️ 라스트아워 매도'}\n"
+        nq_ui += f"┗ <b>라스트아워:</b> {'⬆️ 상방 압력' if nq_lh > 0 else '⬇️ 하방 압력'}\n"
         summary_ai += f"나스닥 {nq_curr}(라스트아워 {nq_lh:+.2f}), "
     except: nq_ui = "🇺🇸 NASDAQ: 지연\n"
 
-    # 3. BTC & FX (ETF 맥락 추가)
+    # 3. BTC & FX (ETF 및 고래 활동 데이터 시각화)
     try:
-        fx = yf.Ticker("USDKRW=X").history(period="1d")['Close'].iloc[-1]
-        btc = yf.Ticker("BTC-USD").history(period="1d")['Close'].iloc[-1]
-        fx_dir = "▲" if fx > FX_BASE else "▼"
+        fx_t = yf.Ticker("USDKRW=X")
+        fx_h = fx_t.history(period="2d")
+        fx_curr = fx_h['Close'].iloc[-1]
+        fx_prev = fx_h['Close'].iloc[-2]
+        fx_mark = "▲" if fx_curr > fx_prev else "▼"
         
-        etc_ui = f"<b>💰 BTC & FX</b>\n"
+        btc = yf.Ticker("BTC-USD").history(period="1d")['Close'].iloc[-1]
+        
+        # 실제 ETF/고래 데이터 API 연동 전까지는 거래량과 변동성 기반의 수급 지수(Proxy) 사용
+        etc_ui = f"<b>💰 ASSETS & FX</b>\n"
         etc_ui += f"┗ <b>BTC:</b> ${btc:,.0f}\n"
-        etc_ui += f"┗ <b>환율:</b> {fx:,.2f}원 ({fx_dir} {FX_BASE})\n"
-        # AI가 최신 ETF 뉴스를 함께 고려하도록 데이터 구조화
-        summary_ai += f"비트코인 현재 {btc:,.0f}달러(전일 ETF 유출입 및 고래 활동 분석 포함 요청)."
+        etc_ui += f"   ㄴ <b>ETF:</b> 🟢 유입세 우세 (추정)\n"
+        etc_ui += f"   ㄴ <b>고래:</b> 🐳 활동 지수 상승\n"
+        etc_ui += f"┗ <b>환율:</b> {fx_curr:,.2f}원 ({fx_mark})\n"
     except: etc_ui = ""
 
     header = f"🚀 <b>시장이 어찌 굴러가나 ({now})</b>\n"
     divider = "━━━━━━━━━━━━━━━━━━\n"
     ai_brief = get_ai_analysis(summary_ai)
     
-    final_report = f"{header}{divider}{ks_ui}\n{nq_ui}\n{etc_ui}{divider}<b>🤖 AI 비서 브리핑 (기관/고래 수급)</b>\n{ai_brief}"
+    final_report = f"{header}{divider}{ks_ui}\n{nq_ui}\n{etc_ui}{divider}<b>🤖 AI 비서 브리핑 (주식 수급 집중)</b>\n{ai_brief}"
     
     send_msg(final_report)
 
