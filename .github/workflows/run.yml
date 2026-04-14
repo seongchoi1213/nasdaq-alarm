@@ -22,11 +22,10 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install dependencies
+     - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          # AI 엔진 404 에러 방지를 위해 최신 버전 라이브러리 강제 설치
-          pip install --upgrade google-generativeai yfinance requests pytz pandas
+          pip install google-genai yfinance requests pytz pandas
 
       - name: Run script
         env:
