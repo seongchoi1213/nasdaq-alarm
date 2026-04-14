@@ -9,6 +9,7 @@ def send_msg(text):
     chat_id = os.environ.get('TELEGRAM_CHAT_ID')
     if not token or not chat_id: return
     url = f"https://api.telegram.org/bot{token}/sendMessage"
+    # HTML 파싱 모드를 활성화하여 굵게(b), 줄바꿈 등을 적용합니다.
     payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
     try:
         requests.post(url, json=payload)
@@ -18,6 +19,7 @@ def get_ai_analysis(market_data):
     api_key = os.environ.get('GEMINI_API_KEY')
     if not api_key: return "API 키 없음"
     
+    # 서버 상황에 맞는 모델 자동 탐색
     list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
     try:
         models_resp = requests.get(list_url).json()
@@ -27,12 +29,12 @@ def get_ai_analysis(market_data):
 
     for model_path in available_models:
         url = f"https://generativelanguage.googleapis.com/v1beta/{model_path}:generateContent?key={api_key}"
-        # 환율 뉴노멀 1450원 기준을 프롬프트에 주입
+        # 사용자 요청 반영: 환율은 기준점으로만 사용, 수급 중심의 2-3문장 요약
         prompt = f"""
-        전문 투자 분석가로서 다음 데이터를 분석해줘.
-        1. 환율 뉴노멀 기준점은 1,450원이야. 현재 환율이 이 대비 어떤 리스크가 있는지 언급해줘.
-        2. 코스피와 나스닥의 가격 흐름을 통해 세력 수급 강도를 평가해줘.
-        3. 3문장 이내로 아주 날카롭게 요약해줘.
+        당신은 냉철한 투자 비서입니다. 다음 데이터를 2~3문장으로 분석하세요.
+        - 환율 1,450원을 '뉴노멀' 기준선으로 잡고 현재 시장의 유리/불리만 짧게 언급할 것.
+        - 코스피와 나스닥의 가격 흐름을 통해 '수급 에너지'가 어디로 쏠리는지 분석할 것.
+        - 군더더기 없는 결과 중심의 문체로 작성할 것.
         데이터: {market_data}
         """
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
@@ -49,48 +51,41 @@ def run():
     now = datetime.now(seoul_tz).strftime('%Y-%m-%d %H:%M')
     
     summary_ai = ""
-    NEW_NORMAL_FX = 1450.0 # 사용자 설정 뉴 노멀 환율
+    FX_BASE = 1450.0 # 뉴노멀 기준 환율
 
-    # 1. 코스피 (오전 수급 및 변동성)
+    # 1. KOSPI 섹션
     try:
         ks_t = yf.Ticker("^KS11")
         ks_h = ks_t.history(period="1d", interval="15m")
         ks_curr = ks_h['Close'].iloc[-1]
-        ks_open = ks_h['Open'].iloc[0]
-        ks_diff = ks_curr - ks_open
-        ks_low, ks_high = ks_h['Low'].min(), ks_h['High'].max()
-        
+        ks_diff = ks_curr - ks_h['Open'].iloc[0]
         ks_ui = f"<b>🇰🇷 KOSPI MARKET</b>\n"
-        ks_ui += f"┗ <b>지수:</b> {ks_curr:,.2f} ({ks_diff:+.2f})\n"
-        ks_ui += f"┗ <b>범위:</b> {ks_low:,.0f} ~ {ks_high:,.0f}\n"
-        ks_ui += f"┗ <b>수급:</b> {'🟢 기관/외인 매수추정' if ks_diff > 0 else '🔴 매물 소화 중'}\n"
-        summary_ai += f"코스피 {ks_curr}(시초대비 {ks_diff:+.2f}), 고점 {ks_high}, 저점 {ks_low}. "
-    except: ks_ui = "🇰🇷 KOSPI: 데이터 분석 지연\n"
+        ks_ui += f"┗ <b>{ks_curr:,.2f}</b> ({ks_diff:+.2f})\n"
+        ks_ui += f"┗ <b>수급:</b> {'🟢 매수세' if ks_diff > 0 else '🔴 매도세'}\n"
+        summary_ai += f"코스피 {ks_curr}(전일비 {ks_diff:+.2f}), "
+    except: ks_ui = "🇰🇷 KOSPI: 지연\n"
 
-    # 2. 나스닥 (라스트아워 및 변동성)
+    # 2. NASDAQ 섹션
     try:
         nq_t = yf.Ticker("NQ=F")
         nq_h = nq_t.history(period="1d", interval="1h")
         nq_curr = nq_h['Close'].iloc[-1]
-        nq_low, nq_high = nq_h['Low'].min(), nq_h['High'].max()
-        nq_last_hour = nq_curr - nq_h['Open'].iloc[-1]
-        
+        nq_lh = nq_curr - nq_h['Open'].iloc[-1]
         nq_ui = f"<b>🇺🇸 NASDAQ 100</b>\n"
-        nq_ui += f"┗ <b>지수:</b> {nq_curr:,.2f}\n"
-        nq_ui += f"┗ <b>라스트아워:</b> {'⬆️ 상방압력' if nq_last_hour > 0 else '⬇️ 하방압력'} ({nq_last_hour:+.2f})\n"
-        summary_ai += f"나스닥 {nq_curr}, 변동폭 {nq_low}~{nq_high}, 폐장직전 {nq_last_hour:+.2f}. "
-    except: nq_ui = "🇺🇸 NASDAQ: 데이터 분석 지연\n"
+        nq_ui += f"┗ <b>{nq_curr:,.2f}</b> ({nq_lh:+.2f})\n"
+        nq_ui += f"┗ <b>마감직전:</b> {'⬆️ 상방' if nq_lh > 0 else '⬇️ 하방'}\n"
+        summary_ai += f"나스닥 {nq_curr}(라스트아워 {nq_lh:+.2f}), "
+    except: nq_ui = "🇺🇸 NASDAQ: 지연\n"
 
-    # 3. 기타 자산 및 환율 (뉴 노멀 비교)
+    # 3. FX & BTC 섹션
     try:
-        btc = yf.Ticker("BTC-USD").history(period="1d")['Close'].iloc[-1]
         fx = yf.Ticker("USDKRW=X").history(period="1d")['Close'].iloc[-1]
-        fx_status = "⚠️ 주의" if fx > NEW_NORMAL_FX else "✅ 안정"
-        
-        etc_ui = f"<b>💰 ASSETS & FX (Target: {NEW_NORMAL_FX:,.0f})</b>\n"
-        etc_ui += f"┗ <b>환율:</b> {fx:,.2f}원 ({fx_status})\n"
+        btc = yf.Ticker("BTC-USD").history(period="1d")['Close'].iloc[-1]
+        fx_dir = "▲" if fx > FX_BASE else "▼"
+        etc_ui = f"<b>💰 FX & BTC</b>\n"
+        etc_ui += f"┗ <b>환율:</b> {fx:,.2f}원 ({fx_dir} {FX_BASE})\n"
         etc_ui += f"┗ <b>BTC:</b> ${btc:,.0f}\n"
-        summary_ai += f"현재 환율 {fx}원(뉴노멀 기준 1450원 대비 평가 필요), 비트코인 {btc:,.0f}달러."
+        summary_ai += f"환율 {fx}원(뉴노멀 {FX_BASE}), 비트코인 {btc:,.0f}달러."
     except: etc_ui = ""
 
     # 리포트 조립
