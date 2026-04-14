@@ -9,7 +9,6 @@ def send_msg(text):
     chat_id = os.environ.get('TELEGRAM_CHAT_ID')
     if not token or not chat_id: return
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    # HTML 파싱 모드를 활성화하여 굵게(b), 줄바꿈 등을 적용합니다.
     payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
     try:
         requests.post(url, json=payload)
@@ -19,7 +18,6 @@ def get_ai_analysis(market_data):
     api_key = os.environ.get('GEMINI_API_KEY')
     if not api_key: return "API 키 없음"
     
-    # 서버 상황에 맞는 모델 자동 탐색
     list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
     try:
         models_resp = requests.get(list_url).json()
@@ -29,12 +27,12 @@ def get_ai_analysis(market_data):
 
     for model_path in available_models:
         url = f"https://generativelanguage.googleapis.com/v1beta/{model_path}:generateContent?key={api_key}"
-        # 사용자 요청 반영: 환율은 기준점으로만 사용, 수급 중심의 2-3문장 요약
+        # 환율 언급 금지 및 특정 시간대 수급/고래 거래 집중 요청
         prompt = f"""
-        당신은 냉철한 투자 비서입니다. 다음 데이터를 2~3문장으로 분석하세요.
-        - 환율 1,450원을 '뉴노멀' 기준선으로 잡고 현재 시장의 유리/불리만 짧게 언급할 것.
-        - 코스피와 나스닥의 가격 흐름을 통해 '수급 에너지'가 어디로 쏠리는지 분석할 것.
-        - 군더더기 없는 결과 중심의 문체로 작성할 것.
+        당신은 수급 분석 전문가입니다. 다음 데이터를 2~3문장으로 분석하세요.
+        1. 환율은 브리핑에서 절대 언급하지 마세요.
+        2. 나스닥 '라스트아워'와 코스피 '오전장'의 가격 변화를 통해 세력의 수급 강도를 분석하세요.
+        3. 비트코인의 가격 위치를 보고 고래(대형 세력)의 매집/이탈 여부를 추론하여 코멘트하세요.
         데이터: {market_data}
         """
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
@@ -51,9 +49,9 @@ def run():
     now = datetime.now(seoul_tz).strftime('%Y-%m-%d %H:%M')
     
     summary_ai = ""
-    FX_BASE = 1450.0 # 뉴노멀 기준 환율
+    FX_BASE = 1450.0
 
-    # 1. KOSPI 섹션
+    # 1. KOSPI 섹션 (오전 수급)
     try:
         ks_t = yf.Ticker("^KS11")
         ks_h = ks_t.history(period="1d", interval="15m")
@@ -61,11 +59,11 @@ def run():
         ks_diff = ks_curr - ks_h['Open'].iloc[0]
         ks_ui = f"<b>🇰🇷 KOSPI MARKET</b>\n"
         ks_ui += f"┗ <b>{ks_curr:,.2f}</b> ({ks_diff:+.2f})\n"
-        ks_ui += f"┗ <b>수급:</b> {'🟢 매수세' if ks_diff > 0 else '🔴 매도세'}\n"
-        summary_ai += f"코스피 {ks_curr}(전일비 {ks_diff:+.2f}), "
+        ks_ui += f"┗ <b>오전수급:</b> {'🟢 매수세 우위' if ks_diff > 0 else '🔴 매도세 우위'}\n"
+        summary_ai += f"코스피 현재 {ks_curr}(시초대비 {ks_diff:+.2f}), "
     except: ks_ui = "🇰🇷 KOSPI: 지연\n"
 
-    # 2. NASDAQ 섹션
+    # 2. NASDAQ 섹션 (라스트아워)
     try:
         nq_t = yf.Ticker("NQ=F")
         nq_h = nq_t.history(period="1d", interval="1h")
@@ -73,19 +71,22 @@ def run():
         nq_lh = nq_curr - nq_h['Open'].iloc[-1]
         nq_ui = f"<b>🇺🇸 NASDAQ 100</b>\n"
         nq_ui += f"┗ <b>{nq_curr:,.2f}</b> ({nq_lh:+.2f})\n"
-        nq_ui += f"┗ <b>마감직전:</b> {'⬆️ 상방' if nq_lh > 0 else '⬇️ 하방'}\n"
-        summary_ai += f"나스닥 {nq_curr}(라스트아워 {nq_lh:+.2f}), "
+        nq_ui += f"┗ <b>라스트아워:</b> {'⬆️ 말아올림' if nq_lh > 0 else '⬇️ 내리꽂음'}\n"
+        summary_ai += f"나스닥 {nq_curr}(라스트아워 변동 {nq_lh:+.2f}), "
     except: nq_ui = "🇺🇸 NASDAQ: 지연\n"
 
-    # 3. FX & BTC 섹션
+    # 3. BTC & FX 섹션 (환율은 표시만)
     try:
         fx = yf.Ticker("USDKRW=X").history(period="1d")['Close'].iloc[-1]
-        btc = yf.Ticker("BTC-USD").history(period="1d")['Close'].iloc[-1]
+        btc_t = yf.Ticker("BTC-USD")
+        btc_h = btc_t.history(period="1d")
+        btc_curr = btc_h['Close'].iloc[-1]
         fx_dir = "▲" if fx > FX_BASE else "▼"
-        etc_ui = f"<b>💰 FX & BTC</b>\n"
+        
+        etc_ui = f"<b>💰 BTC & FX</b>\n"
+        etc_ui += f"┗ <b>BTC:</b> ${btc_curr:,.0f}\n"
         etc_ui += f"┗ <b>환율:</b> {fx:,.2f}원 ({fx_dir} {FX_BASE})\n"
-        etc_ui += f"┗ <b>BTC:</b> ${btc:,.0f}\n"
-        summary_ai += f"환율 {fx}원(뉴노멀 {FX_BASE}), 비트코인 {btc:,.0f}달러."
+        summary_ai += f"비트코인 현재가 {btc_curr:,.0f}달러."
     except: etc_ui = ""
 
     # 리포트 조립
@@ -93,7 +94,7 @@ def run():
     divider = "━━━━━━━━━━━━━━━━━━\n"
     ai_brief = get_ai_analysis(summary_ai)
     
-    final_report = f"{header}{divider}{ks_ui}\n{nq_ui}\n{etc_ui}{divider}<b>🤖 AI 비서 브리핑</b>\n{ai_brief}"
+    final_report = f"{header}{divider}{ks_ui}\n{nq_ui}\n{etc_ui}{divider}<b>🤖 AI 비서 브리핑 (수급 집중)</b>\n{ai_brief}"
     
     send_msg(final_report)
 
